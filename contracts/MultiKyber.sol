@@ -82,35 +82,39 @@ contract MultiKyber is IKyber {
 
         if (isCompoundToken(src)) {
             uint256 compoundRate = ICompoundToken(address(src)).exchangeRateStored();
-            uint256 amount = srcQty.mul(compoundRate).div(1e18);
 
+            IERC20 underlying = compoundUnderlyingAsset(src);
             uint256 srcDecimals = decimalsOf(src);
+            uint256 underDecimals = decimalsOf(underlying);
 
             (expectedRate, slippageRate) = getExpectedRate(
-                compoundUnderlyingAsset(src),
+                underlying,
                 dest,
-                amount
+                srcQty.mul(compoundRate).div(1e18)
             );
 
             return (
-                expectedRate.mul(compoundRate).mul(10**srcDecimals).div(1e18).div(1e18),
-                slippageRate.mul(compoundRate).mul(10**srcDecimals).div(1e18).div(1e18)
+                expectedRate.mul(compoundRate).mul(10**srcDecimals).mul(10**uint256(18).sub(underDecimals)).div(1e18).div(1e18),
+                slippageRate.mul(compoundRate).mul(10**srcDecimals).mul(10**uint256(18).sub(underDecimals)).div(1e18).div(1e18)
             );
         }
 
         if (isCompoundToken(dest)) {
+            IERC20 underlying = compoundUnderlyingAsset(dest);
+
             (expectedRate, slippageRate) = getExpectedRate(
                 src,
-                compoundUnderlyingAsset(dest),
+                underlying,
                 srcQty
             );
 
             uint256 compoundRate = ICompoundToken(address(dest)).exchangeRateStored();
             uint256 destDecimals = decimalsOf(dest);
+            uint256 underDecimals = decimalsOf(underlying);
 
             return (
-                expectedRate.mul(1e18).mul(1e18).div(10**destDecimals).div(compoundRate),
-                slippageRate.mul(1e18).mul(1e18).div(10**destDecimals).div(compoundRate)
+                expectedRate.mul(1e18).mul(1e18).div(10**destDecimals).div(10**uint256(18).sub(underDecimals)).div(compoundRate),
+                slippageRate.mul(1e18).mul(1e18).div(10**destDecimals).div(10**uint256(18).sub(underDecimals)).div(compoundRate)
             );
         }
 
@@ -143,9 +147,11 @@ contract MultiKyber is IKyber {
 
         if (isCompoundToken(src)) {
 
-            uint256 underlyingAmount = ICompoundToken(address(src)).redeem(srcAmount);
+            ICompoundToken(address(src)).redeem(srcAmount);
 
             IERC20 underlying = compoundUnderlyingAsset(src);
+            uint256 underlyingAmount = underlying.balanceOf(address(this));
+
             if (underlying != ETH) {
                 if (underlying.allowance(address(this), address(kyber)) != 0) {
                     underlying.safeApprove(address(kyber), 0);
