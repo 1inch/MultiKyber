@@ -153,10 +153,9 @@ contract CompoundMultiKyber is IKyber {
             uint256 underlyingAmount = balanceOf(underlying, address(this));
 
             if (underlying != ETH) {
-                if (underlying.allowance(address(this), address(kyber)) != 0) {
-                    underlying.safeApprove(address(kyber), 0);
+                if (underlying.allowance(address(this), address(kyber)) == 0) {
+                    underlying.safeApprove(address(kyber), uint256(-1));
                 }
-                underlying.safeApprove(address(kyber), underlyingAmount);
             }
 
             return this.tradeWithHint(
@@ -173,10 +172,9 @@ contract CompoundMultiKyber is IKyber {
 
         if (isCompoundToken(dest)) {
             if (src != ETH) {
-                if (src.allowance(address(this), address(kyber)) != 0) {
-                    src.safeApprove(address(kyber), 0);
+                if (src.allowance(address(this), address(kyber)) == 0) {
+                    src.safeApprove(address(kyber), uint256(-1));
                 }
-                src.safeApprove(address(kyber), srcAmount);
             }
 
             IERC20 underlying = compoundUnderlyingAsset(dest);
@@ -195,10 +193,9 @@ contract CompoundMultiKyber is IKyber {
             if (underlying == ETH) {
                 cETH.mint.value(returnAmount)();
             } else {
-                if (underlying.allowance(address(this), address(dest)) != 0) {
-                    underlying.safeApprove(address(dest), 0);
+                if (underlying.allowance(address(this), address(dest)) == 0) {
+                    underlying.safeApprove(address(dest), uint256(-1));
                 }
-                underlying.safeApprove(address(dest), returnAmount);
                 ICompoundToken(address(dest)).mint(returnAmount);
             }
             uint256 balance = balanceOf(dest, address(this));
@@ -218,6 +215,12 @@ contract CompoundMultiKyber is IKyber {
                 src.safeTransfer(destAddress, balance);
             }
             return balance;
+        }
+
+        if (src != ETH) {
+            if (src.allowance(address(this), address(dest)) == 0) {
+                src.safeApprove(address(dest), uint256(-1));
+            }
         }
 
         return kyber.tradeWithHint.value(address(this).balance)(
