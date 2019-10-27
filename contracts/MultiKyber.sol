@@ -84,6 +84,8 @@ contract MultiKyber is IKyber {
             uint256 compoundRate = ICompoundToken(address(src)).exchangeRateStored();
             uint256 amount = srcQty.mul(compoundRate).div(1e18);
 
+            uint256 srcDecimals = decimalsOf(src);
+
             (expectedRate, slippageRate) = getExpectedRate(
                 compoundUnderlyingAsset(src),
                 dest,
@@ -91,8 +93,8 @@ contract MultiKyber is IKyber {
             );
 
             return (
-                expectedRate.mul(amount).div(1e18),
-                slippageRate.mul(amount).div(1e18)
+                expectedRate.mul(compoundRate).mul(10**srcDecimals).div(1e18).div(1e18),
+                slippageRate.mul(compoundRate).mul(10**srcDecimals).div(1e18).div(1e18)
             );
         }
 
@@ -103,14 +105,12 @@ contract MultiKyber is IKyber {
                 srcQty
             );
 
-            IERC20 underlying = compoundUnderlyingAsset(dest);
             uint256 compoundRate = ICompoundToken(address(dest)).exchangeRateStored();
             uint256 destDecimals = decimalsOf(dest);
-            uint256 underDecimals = decimalsOf(underlying);
 
             return (
-                expectedRate.mul(1e18).mul(10**underDecimals).div(10**destDecimals).div(compoundRate),
-                slippageRate.mul(1e18).mul(10**underDecimals).div(10**destDecimals).div(compoundRate)
+                expectedRate.mul(1e18).mul(1e18).div(10**destDecimals).div(compoundRate),
+                slippageRate.mul(1e18).mul(1e18).div(10**destDecimals).div(compoundRate)
             );
         }
 
