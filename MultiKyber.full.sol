@@ -351,7 +351,7 @@ library SafeERC20 {
     }
 }
 
-// File: contracts/MultiKyber.sol
+// File: contracts/CompoundMultiKyber.sol
 
 pragma solidity ^0.5.0;
 
@@ -405,7 +405,7 @@ interface IKyber {
 }
 
 
-contract MultiKyber is IKyber {
+contract CompoundMultiKyber is IKyber {
 
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
@@ -504,7 +504,7 @@ contract MultiKyber is IKyber {
             ICompoundToken(address(src)).redeem(srcAmount);
 
             IERC20 underlying = compoundUnderlyingAsset(src);
-            uint256 underlyingAmount = underlying.balanceOf(address(this));
+            uint256 underlyingAmount = balanceOf(underlying, address(this));
 
             if (underlying != ETH) {
                 if (underlying.allowance(address(this), address(kyber)) != 0) {
@@ -546,20 +546,17 @@ contract MultiKyber is IKyber {
                 hint
             );
 
-            uint256 balance;
             if (underlying == ETH) {
                 cETH.mint.value(returnAmount)();
-                balance = address(this).balance;
-                destAddress.transfer(balance);
             } else {
                 if (underlying.allowance(address(this), address(dest)) != 0) {
                     underlying.safeApprove(address(dest), 0);
                 }
                 underlying.safeApprove(address(dest), returnAmount);
                 ICompoundToken(address(dest)).mint(returnAmount);
-                balance = dest.balanceOf(address(this));
-                dest.safeTransfer(destAddress, balance);
             }
+            uint256 balance = balanceOf(dest, address(this));
+            dest.safeTransfer(destAddress, balance);
             return balance;
         }
 
@@ -589,9 +586,11 @@ contract MultiKyber is IKyber {
         );
     }
 
-    function isCompoundToken(IERC20 token) public view returns(bool) {
-        (bool isListed,) = compound.markets(address(token));
-        return token == cETH || isListed;
+    function balanceOf(IERC20 asset, address account) public view returns(uint256) {
+        if (asset == ETH) {
+            return account.balance;
+        }
+        return asset.balanceOf(account);
     }
 
     function decimalsOf(IERC20 asset) public view returns(uint256) {
@@ -601,10 +600,29 @@ contract MultiKyber is IKyber {
         return uint256(ERC20Detailed(address(asset)).decimals());
     }
 
+    function isCompoundToken(IERC20 token) public view returns(bool) {
+        (bool isListed,) = compound.markets(address(token));
+        return token == cETH || isListed;
+    }
+
     function compoundUnderlyingAsset(IERC20 asset) public view returns(IERC20) {
         if (asset == cETH) {
             return ETH;
         }
         return IERC20(ICompoundToken(address(asset)).underlying());
+    }
+}
+
+// File: contracts/MultiKyber.sol
+
+pragma solidity ^0.5.0;
+
+
+
+contract MultiKyber is CompoundMultiKyber {
+    constructor(IKyber _kyber, ICompound _compound, ICompoundEther _cETH)
+        public
+        CompoundMultiKyber(_kyber, _compound, _cETH)
+    {
     }
 }
