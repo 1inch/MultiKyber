@@ -23,20 +23,26 @@ contract('MultiKyber', function ([_, addr1]) {
 
         it('should work getExpectedRate ETH => DAI', async function () {
             const { expectedRate, slippageRate } = await this.multiKyber.getExpectedRate.call(ETH, DAI, web3.utils.toWei('1'));
-            console.log('expectedRate', expectedRate.toString());
-            console.log('slippageRate', slippageRate.toString());
+            console.log('expectedRate', expectedRate.toString() / 1e18);
+            console.log('slippageRate', slippageRate.toString() / 1e18);
         });
 
         it('should work getExpectedRate ETH => cETH', async function () {
             const { expectedRate, slippageRate } = await this.multiKyber.getExpectedRate.call(ETH, cETH, web3.utils.toWei('1'));
-            console.log('expectedRate', expectedRate.toString());
-            console.log('slippageRate', slippageRate.toString());
+            console.log('expectedRate', expectedRate.toString() / 1e18);
+            console.log('slippageRate', slippageRate.toString() / 1e18);
         });
 
-        it('should work getExpectedRate DAI => cDAI', async function () {
-            const { expectedRate, slippageRate } = await this.multiKyber.getExpectedRate.call(DAI, cDAI, web3.utils.toWei('1'));
-            console.log('expectedRate', expectedRate.toString());
-            console.log('slippageRate', slippageRate.toString());
+        it('should work getExpectedRate cDAI => DAI', async function () {
+            const { expectedRate, slippageRate } = await this.multiKyber.getExpectedRate.call(cDAI, DAI, '100000000');
+            console.log('expectedRate', expectedRate.toString() / 1e18);
+            console.log('slippageRate', slippageRate.toString() / 1e18);
+        });
+
+        it('should work getExpectedRate cETH => cDAI', async function () {
+            const { expectedRate, slippageRate } = await this.multiKyber.getExpectedRate.call(cETH, cDAI, '100000000');
+            console.log('expectedRate', expectedRate.toString() / 1e18);
+            console.log('slippageRate', slippageRate.toString() / 1e18);
         });
     });
 });

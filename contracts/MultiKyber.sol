@@ -102,11 +102,11 @@ contract MultiKyber is IKyber {
                 compoundUnderlyingAsset(dest),
                 srcQty
             );
-            
+
             IERC20 underlying = compoundUnderlyingAsset(dest);
             uint256 compoundRate = ICompoundToken(address(dest)).exchangeRateStored();
-            uint256 destDecimals = uint256(ERC20Detailed(address(dest)).decimals());
-            uint256 underDecimals = uint256(ERC20Detailed(address(underlying)).decimals());
+            uint256 destDecimals = decimalsOf(dest);
+            uint256 underDecimals = decimalsOf(underlying);
 
             return (
                 expectedRate.mul(1e18).mul(10**underDecimals).div(10**destDecimals).div(compoundRate),
@@ -229,6 +229,13 @@ contract MultiKyber is IKyber {
     function isCompoundToken(IERC20 token) public view returns(bool) {
         (bool isListed,) = compound.markets(address(token));
         return token == cETH || isListed;
+    }
+
+    function decimalsOf(IERC20 asset) public view returns(uint256) {
+        if (asset == ETH) {
+            return 18;
+        }
+        return uint256(ERC20Detailed(address(asset)).decimals());
     }
 
     function compoundUnderlyingAsset(IERC20 asset) public view returns(IERC20) {
