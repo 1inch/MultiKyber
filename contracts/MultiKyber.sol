@@ -137,7 +137,9 @@ contract MultiKyber is IKyber {
         payable
         returns(uint256)
     {
-        src.safeTransferFrom(msg.sender, address(this), srcAmount);
+        if (src != ETH && msg.sender != address(this)) {
+            src.safeTransferFrom(msg.sender, address(this), srcAmount);
+        }
 
         if (isCompoundToken(src)) {
 
@@ -151,7 +153,7 @@ contract MultiKyber is IKyber {
                 underlying.safeApprove(address(kyber), underlyingAmount);
             }
 
-            return tradeWithHint(
+            return this.tradeWithHint(
                 underlying,
                 underlyingAmount,
                 dest,
@@ -173,7 +175,7 @@ contract MultiKyber is IKyber {
 
             IERC20 underlying = compoundUnderlyingAsset(dest);
 
-            uint256 returnAmount = tradeWithHint(
+            uint256 returnAmount = this.tradeWithHint(
                 src,
                 srcAmount,
                 underlying,
@@ -194,7 +196,8 @@ contract MultiKyber is IKyber {
                     underlying.safeApprove(address(dest), 0);
                 }
                 underlying.safeApprove(address(dest), returnAmount);
-                balance = ICompoundToken(address(dest)).mint(returnAmount);
+                ICompoundToken(address(dest)).mint(returnAmount);
+                balance = dest.balanceOf(address(this));
                 dest.safeTransfer(destAddress, balance);
             }
             return balance;
