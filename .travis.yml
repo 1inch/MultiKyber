@@ -13,7 +13,7 @@ script:
   - yarn run lint
   - yarn run test
 after_script:
-  - yarn run coverage
+#  - yarn run coverage
 branches:
   only:
   - master

@@ -188,6 +188,62 @@ interface IERC20 {
     event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
+// File: @openzeppelin/contracts/token/ERC20/ERC20Detailed.sol
+
+pragma solidity ^0.5.0;
+
+
+/**
+ * @dev Optional functions from the ERC20 standard.
+ */
+contract ERC20Detailed is IERC20 {
+    string private _name;
+    string private _symbol;
+    uint8 private _decimals;
+
+    /**
+     * @dev Sets the values for `name`, `symbol`, and `decimals`. All three of
+     * these values are immutable: they can only be set once during
+     * construction.
+     */
+    constructor (string memory name, string memory symbol, uint8 decimals) public {
+        _name = name;
+        _symbol = symbol;
+        _decimals = decimals;
+    }
+
+    /**
+     * @dev Returns the name of the token.
+     */
+    function name() public view returns (string memory) {
+        return _name;
+    }
+
+    /**
+     * @dev Returns the symbol of the token, usually a shorter version of the
+     * name.
+     */
+    function symbol() public view returns (string memory) {
+        return _symbol;
+    }
+
+    /**
+     * @dev Returns the number of decimals used to get its user representation.
+     * For example, if `decimals` equals `2`, a balance of `505` tokens should
+     * be displayed to a user as `5,05` (`505 / 10 ** 2`).
+     *
+     * Tokens usually opt for a value of 18, imitating the relationship between
+     * Ether and Wei.
+     *
+     * > Note that this information is only used for _display_ purposes: it in
+     * no way affects any of the arithmetic of the contract, including
+     * `IERC20.balanceOf` and `IERC20.transfer`.
+     */
+    function decimals() public view returns (uint8) {
+        return _decimals;
+    }
+}
+
 // File: @openzeppelin/contracts/utils/Address.sol
 
 pragma solidity ^0.5.0;
@@ -303,6 +359,7 @@ pragma solidity ^0.5.0;
 
 
 
+
 contract ICompound {
     function markets(address cToken)
         external
@@ -330,7 +387,7 @@ interface IKyber {
     function getExpectedRate(IERC20 src, IERC20 dest, uint srcQty)
         external
         view
-        returns(uint expectedRate, uint slippageRate);
+        returns(uint256 expectedRate, uint256 slippageRate);
 
     function tradeWithHint(
         IERC20 src,
@@ -344,7 +401,7 @@ interface IKyber {
     )
         external
         payable
-        returns(uint);
+        returns(uint256);
 }
 
 
@@ -373,27 +430,48 @@ contract MultiKyber is IKyber {
     function getExpectedRate(IERC20 src, IERC20 dest, uint srcQty)
         public
         view
-        returns(uint expectedRate, uint slippageRate)
+        returns(uint256 expectedRate, uint256 slippageRate)
     {
         // Compound
 
-        if (isCompundToken(src)) {
-            IERC20 underlying = compoundUnderlyingAsset(src);
-            uint256 rate = ICompoundToken(address(src)).exchangeRateStored();
-            return getExpectedRate(underlying, dest, rate.mul(srcQty).div(1e18));
+        if (isCompoundToken(src)) {
+            uint256 compoundRate = ICompoundToken(address(src)).exchangeRateStored();
+            uint256 amount = srcQty.mul(compoundRate).div(1e18);
+
+            (expectedRate, slippageRate) = getExpectedRate(
+                compoundUnderlyingAsset(src),
+                dest,
+                amount
+            );
+
+            return (
+                expectedRate.mul(amount).div(1e18),
+                slippageRate.mul(amount).div(1e18)
+            );
         }
 
-        if (isCompundToken(dest)) {
+        if (isCompoundToken(dest)) {
+            (expectedRate, slippageRate) = getExpectedRate(
+                src,
+                compoundUnderlyingAsset(dest),
+                srcQty
+            );
+            
             IERC20 underlying = compoundUnderlyingAsset(dest);
-            uint256 rate = ICompoundToken(address(dest)).exchangeRateStored();
-            (expectedRate, slippageRate) = getExpectedRate(src, underlying, srcQty);
-            return (expectedRate.mul(1e18).div(rate), slippageRate.mul(1e18).div(rate));
+            uint256 compoundRate = ICompoundToken(address(dest)).exchangeRateStored();
+            uint256 destDecimals = uint256(ERC20Detailed(address(dest)).decimals());
+            uint256 underDecimals = uint256(ERC20Detailed(address(underlying)).decimals());
+
+            return (
+                expectedRate.mul(1e18).mul(10**underDecimals).div(10**destDecimals).div(compoundRate),
+                slippageRate.mul(1e18).mul(10**underDecimals).div(10**destDecimals).div(compoundRate)
+            );
         }
 
         // Fallback
 
         if (src == dest) {
-            return (1e18, 0);
+            return (1e18, 1e18);
         }
 
         return kyber.getExpectedRate(src, dest, srcQty);
@@ -415,7 +493,7 @@ contract MultiKyber is IKyber {
     {
         src.safeTransferFrom(msg.sender, address(this), srcAmount);
 
-        if (isCompundToken(src)) {
+        if (isCompoundToken(src)) {
 
             uint256 underlyingAmount = ICompoundToken(address(src)).redeem(srcAmount);
 
@@ -439,7 +517,7 @@ contract MultiKyber is IKyber {
             );
         }
 
-        if (isCompundToken(dest)) {
+        if (isCompoundToken(dest)) {
             if (src != ETH) {
                 if (src.allowance(address(this), address(kyber)) != 0) {
                     src.safeApprove(address(kyber), 0);
@@ -502,7 +580,7 @@ contract MultiKyber is IKyber {
         );
     }
 
-    function isCompundToken(IERC20 token) public view returns(bool) {
+    function isCompoundToken(IERC20 token) public view returns(bool) {
         (bool isListed,) = compound.markets(address(token));
         return token == cETH || isListed;
     }
