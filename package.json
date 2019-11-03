@@ -35,8 +35,10 @@
     "lint:js:fix": "eslint . --fix",
     "lint:sol": "solium -d .",
     "lint:sol:fix": "solium -d . --fix",
-    "lint": "npm run lint:js && npm run lint:sol",
-    "lint:fix": "npm run lint:js:fix && npm run lint:sol:fix",
-    "dist": "truffle-flattener ./contracts/MultiKyber.sol > MultiKyber.full.sol && solcjs --bin --abi --optimize MultiKyber.full.sol && mv MultiKyber_full_sol_MultiKyber.bin MultiKyber.full.bin && mv MultiKyber_full_sol_MultiKyber.abi MultiKyber.full.abi && rm *_sol_*"
+    "lint": "yarn run lint:js && yarn run lint:sol",
+    "lint:fix": "yarn run lint:js:fix && yarn run lint:sol:fix",
+    "dist-kyber": "truffle-flattener ./contracts/MultiKyber.sol > MultiKyber.full.sol && solcjs --bin --abi --optimize MultiKyber.full.sol && mv MultiKyber_full_sol_MultiKyber.bin MultiKyber.full.bin && mv MultiKyber_full_sol_MultiKyber.abi MultiKyber.full.abi && rm *_sol_*",
+    "dist-oasis": "truffle-flattener ./contracts/MultiOasis.sol > MultiOasis.full.sol && solcjs --bin --abi --optimize MultiOasis.full.sol && mv MultiOasis_full_sol_MultiOasis.bin MultiOasis.full.bin && mv MultiOasis_full_sol_MultiOasis.abi MultiOasis.full.abi && rm *_sol_*",
+    "dist": "yarn run dist-kyber; yarn run dist-oasis"
   }
 }

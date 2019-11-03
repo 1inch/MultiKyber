@@ -406,34 +406,20 @@ contract BaseMultiExchange {
     }
 }
 
-// File: contracts/IKyber.sol
+// File: contracts/IOasis.sol
 
 pragma solidity ^0.5.0;
 
 
 
-interface IKyber {
-    function getExpectedRate(IERC20 src, IERC20 dest, uint srcQty)
-        external
-        view
-        returns(uint256 expectedRate, uint256 slippageRate);
+contract IOasis {
 
-    function tradeWithHint(
-        IERC20 src,
-        uint srcAmount,
-        IERC20 dest,
-        address payable destAddress,
-        uint maxDestAmount,
-        uint minConversionRate,
-        address walletId,
-        bytes calldata hint
-    )
-        external
-        payable
-        returns(uint256);
+    function getBuyAmount(IERC20 buyGem, IERC20 payGem, uint payAmt) public view returns (uint fillAmt);
+
+    function sellAllAmount(IERC20 payGem, uint payAmt, IERC20 buyGem, uint minFillAmount) public returns (uint fillAmt);
 }
 
-// File: contracts/BaseMultiKyber.sol
+// File: contracts/BaseMultiOasis.sol
 
 pragma solidity ^0.5.0;
 
@@ -444,17 +430,17 @@ pragma solidity ^0.5.0;
 
 
 
-contract BaseMultiKyber is BaseMultiExchange {
+contract BaseMultiOasis is BaseMultiExchange {
 
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    IERC20 public constant ETH = IERC20(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
+    IERC20 public constant ETH = IERC20(0);
 
-    IKyber public kyber; // 0x818E6FECD516Ecc3849DAf6845e3EC868087B755
+    IOasis public oasis; // 0x39755357759cE0d7f32dC8dC45414CCa409AE24e
 
-    constructor(IKyber _kyber) public {
-        kyber = _kyber;
+    constructor(IOasis _oasis) public {
+        oasis = _oasis;
     }
 
     function getPrice(IERC20 src, IERC20 dest, uint srcQty)
@@ -466,7 +452,7 @@ contract BaseMultiKyber is BaseMultiExchange {
             return 1e18;
         }
 
-        (price,) = kyber.getExpectedRate(src, dest, srcQty);
+        return oasis.getBuyAmount(dest, src, srcQty).mul(1e18).div(srcQty);
     }
 
     function swap(
@@ -474,40 +460,38 @@ contract BaseMultiKyber is BaseMultiExchange {
         uint srcAmount,
         IERC20 dest,
         address payable destAddress,
-        address ref
+        address /*ref*/
     )
         public
         payable
         returns(uint256)
     {
         if (src == dest) {
-            uint256 balance;
-            if (dest == ETH) {
-                balance = address(this).balance;
-                destAddress.transfer(balance);
-            } else {
-                balance = src.balanceOf(address(this));
-                src.safeTransfer(destAddress, balance);
+            uint256 balance = src.balanceOf(address(this));
+            if (destAddress != address(this)) {
+                dest.safeTransfer(destAddress, balance);
             }
             return balance;
         }
 
         if (src != ETH) {
-            if (src.allowance(address(this), address(kyber)) == 0) {
-                src.safeApprove(address(kyber), uint256(-1));
+            if (src.allowance(address(this), address(oasis)) == 0) {
+                src.safeApprove(address(oasis), uint256(-1));
             }
         }
 
-        return kyber.tradeWithHint.value(address(this).balance)(
+        uint256 returnAmount = oasis.sellAllAmount(
             src,
             srcAmount,
             dest,
-            destAddress,
-            1 << 255,
-            0,
-            ref,
-            ""
+            0
         );
+
+        if (destAddress != address(this)) {
+            dest.safeTransfer(destAddress, returnAmount);
+        }
+
+        return returnAmount;
     }
 }
 
@@ -541,105 +525,6 @@ contract ChildMultiExchange is BaseMultiExchange {
             destAddress,
             ref
         );
-    }
-}
-
-// File: contracts/UnwrappedMultiExchange.sol
-
-pragma solidity ^0.5.0;
-
-
-
-contract IWETH is IERC20 {
-    function deposit() public payable;
-    function withdraw(uint wad) public;
-}
-
-
-contract UnwrappedMultiExchange is BaseMultiExchange {
-
-    using SafeERC20 for IWETH;
-
-    IWETH public constant WETH = IWETH(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
-
-    function() external payable {
-        // solium-disable-next-line security/no-tx-origin
-        require(msg.sender != tx.origin);
-    }
-
-    function getPrice(IERC20 src, IERC20 dest, uint srcQty)
-        public
-        view
-        returns(uint256 price)
-    {
-        if (isWrapper(src)) {
-            return getPrice(
-                ETH,
-                dest,
-                srcQty
-            );
-        }
-
-        if (isWrapper(dest)) {
-            return getPrice(
-                src,
-                ETH,
-                srcQty
-            );
-        }
-
-        return super.getPrice(src, dest, srcQty);
-    }
-
-    function swap(
-        IERC20 src,
-        uint srcAmount,
-        IERC20 dest,
-        address payable destAddress,
-        address ref
-    )
-        public
-        payable
-        returns(uint256)
-    {
-        if (isWrapper(src)) {
-
-            WETH.withdraw(srcAmount);
-
-            return this.swap(
-                ETH,
-                srcAmount,
-                dest,
-                destAddress,
-                ref
-            );
-        }
-
-        if (isWrapper(dest)) {
-            uint256 returnAmount = this.swap(
-                src,
-                srcAmount,
-                ETH,
-                address(this),
-                ref
-            );
-
-            WETH.deposit.value(returnAmount)();
-            WETH.safeTransfer(destAddress, returnAmount);
-            return returnAmount;
-        }
-
-        return super.swap(
-            src,
-            srcAmount,
-            dest,
-            destAddress,
-            ref
-        );
-    }
-
-    function isWrapper(IERC20 token) public pure returns(bool) {
-        return (token == WETH);
     }
 }
 
@@ -977,7 +862,104 @@ contract FulcrumMultiExchange is BaseMultiExchange {
     }
 }
 
-// File: contracts/MultiKyber.sol
+// File: contracts/WrappedMultiExchange.sol
+
+pragma solidity ^0.5.0;
+
+
+
+contract IWETH is IERC20 {
+    function deposit() public payable;
+    function withdraw(uint wad) public;
+}
+
+
+contract WrappedMultiExchange is BaseMultiExchange {
+
+    IWETH public constant WETH = IWETH(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+
+    function() external payable {
+        // solium-disable-next-line security/no-tx-origin
+        require(msg.sender != tx.origin);
+    }
+
+    function getPrice(IERC20 src, IERC20 dest, uint srcQty)
+        public
+        view
+        returns(uint256 price)
+    {
+        if (isEther(src)) {
+            return getPrice(
+                WETH,
+                dest,
+                srcQty
+            );
+        }
+
+        if (isEther(dest)) {
+            return getPrice(
+                src,
+                WETH,
+                srcQty
+            );
+        }
+
+        return super.getPrice(src, dest, srcQty);
+    }
+
+    function swap(
+        IERC20 src,
+        uint srcAmount,
+        IERC20 dest,
+        address payable destAddress,
+        address ref
+    )
+        public
+        payable
+        returns(uint256)
+    {
+        if (isEther(src)) {
+
+            WETH.deposit.value(srcAmount)();
+
+            return this.swap(
+                WETH,
+                srcAmount,
+                dest,
+                destAddress,
+                ref
+            );
+        }
+
+        if (isEther(dest)) {
+            uint256 returnAmount = this.swap(
+                src,
+                srcAmount,
+                WETH,
+                address(this),
+                ref
+            );
+
+            WETH.withdraw(returnAmount);
+            destAddress.transfer(returnAmount);
+            return returnAmount;
+        }
+
+        return super.swap(
+            src,
+            srcAmount,
+            dest,
+            destAddress,
+            ref
+        );
+    }
+
+    function isEther(IERC20 token) public pure returns(bool) {
+        return (token == ETH || token == IERC20(0));
+    }
+}
+
+// File: contracts/MultiOasis.sol
 
 pragma solidity ^0.5.0;
 
@@ -987,60 +969,47 @@ pragma solidity ^0.5.0;
 
 
 
-contract MultiKyber is
-    BaseMultiKyber,
-    UnwrappedMultiExchange,
+contract MultiOasis is
+    BaseMultiOasis,
     CompoundMultiExchange,
     FulcrumMultiExchange,
+    WrappedMultiExchange,
     ChildMultiExchange,
-    IKyber
+    IOasis
 {
     constructor(
-        IKyber _kyber,
+        IOasis _oasis,
         ICompound _compound,
         ICompoundEther _cETH
     )
         public
-        BaseMultiKyber(_kyber)
+        BaseMultiOasis(_oasis)
         CompoundMultiExchange(_compound, _cETH)
     {
     }
 
-    function getExpectedRate(IERC20 src, IERC20 dest, uint srcQty)
-        public
-        view
-        returns(uint256 expectedRate, uint256 slippageRate)
-    {
-        return (getPrice(src, dest, srcQty), 0);
-    }
-
-    function tradeWithHint(
-        IERC20 src,
-        uint srcAmount,
-        IERC20 dest,
-        address payable destAddress,
-        uint /*maxDestAmount*/,
-        uint minConversionRate,
-        address walletId,
-        bytes memory /*hint*/
+    function getBuyAmount(
+        IERC20 buyGem,
+        IERC20 payGem,
+        uint256 payAmt
     )
         public
-        payable
-        returns(uint256)
+        view
+        returns(uint256 fillAmt)
     {
-        uint256 returnAmount = swap(
-            src,
-            srcAmount,
-            dest,
-            destAddress,
-            walletId
-        );
+        return payAmt.mul(1e18).div(getPrice(payGem, buyGem, payAmt));
+    }
 
-        require(
-            returnAmount.mul(1e18).div(srcAmount) >= minConversionRate,
-            "Actual conversion rate was lower than minConversionRate"
-        );
-
-        return returnAmount;
+    function sellAllAmount(
+        IERC20 payGem,
+        uint256 payAmt,
+        IERC20 buyGem,
+        uint256 minFillAmount
+    )
+        public
+        returns(uint256 fillAmt)
+    {
+        fillAmt = swap(payGem, payAmt, buyGem, msg.sender, address(0));
+        require(fillAmt >= minFillAmount);
     }
 }

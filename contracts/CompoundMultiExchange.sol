@@ -1,6 +1,6 @@
 pragma solidity ^0.5.0;
 
-import "./BaseMultiKyber.sol";
+import "./BaseMultiExchange.sol";
 
 
 contract ICompound {
@@ -26,12 +26,7 @@ contract ICompoundEther is IERC20 {
 }
 
 
-contract CompoundMultiKyber is BaseMultiKyber {
-
-    using SafeMath for uint256;
-    using SafeERC20 for IERC20;
-
-    IERC20 public constant ETH = IERC20(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
+contract CompoundMultiExchange is BaseMultiExchange {
 
     ICompound public compound;  // 0x3d9819210A31b4961b30EF54bE2aeD79B9c9Cd3B
     ICompoundEther public cETH; // 0x4Ddc2D193948926D02f9B1fE9e1daa0718270ED5
@@ -46,10 +41,10 @@ contract CompoundMultiKyber is BaseMultiKyber {
         require(msg.sender != tx.origin);
     }
 
-    function getExpectedRate(IERC20 src, IERC20 dest, uint srcQty)
+    function getPrice(IERC20 src, IERC20 dest, uint srcQty)
         public
         view
-        returns(uint256 expectedRate, uint256 slippageRate)
+        returns(uint256 price)
     {
         if (isCompoundToken(src)) {
             uint256 compoundRate = ICompoundToken(address(src)).exchangeRateStored();
@@ -58,22 +53,19 @@ contract CompoundMultiKyber is BaseMultiKyber {
             uint256 srcDecimals = decimalsOf(src);
             uint256 underDecimals = decimalsOf(underlying);
 
-            (expectedRate, slippageRate) = getExpectedRate(
+            price = getPrice(
                 underlying,
                 dest,
                 srcQty.mul(compoundRate).div(1e18)
             );
 
-            return (
-                expectedRate.mul(compoundRate).mul(10**srcDecimals).mul(10**uint256(18).sub(underDecimals)).div(1e18).div(1e18),
-                slippageRate.mul(compoundRate).mul(10**srcDecimals).mul(10**uint256(18).sub(underDecimals)).div(1e18).div(1e18)
-            );
+            return price.mul(compoundRate).mul(10**srcDecimals).mul(10**uint256(18).sub(underDecimals)).div(1e18).div(1e18);
         }
 
         if (isCompoundToken(dest)) {
             IERC20 underlying = compoundUnderlyingAsset(dest);
 
-            (expectedRate, slippageRate) = getExpectedRate(
+            price = getPrice(
                 src,
                 underlying,
                 srcQty
@@ -83,24 +75,18 @@ contract CompoundMultiKyber is BaseMultiKyber {
             uint256 destDecimals = decimalsOf(dest);
             uint256 underDecimals = decimalsOf(underlying);
 
-            return (
-                expectedRate.mul(1e18).mul(1e18).div(10**destDecimals).div(10**uint256(18).sub(underDecimals)).div(compoundRate),
-                slippageRate.mul(1e18).mul(1e18).div(10**destDecimals).div(10**uint256(18).sub(underDecimals)).div(compoundRate)
-            );
+            return price.mul(1e18).mul(1e18).div(10**destDecimals).div(10**uint256(18).sub(underDecimals)).div(compoundRate);
         }
 
-        return super.getExpectedRate(src, dest, srcQty);
+        return super.getPrice(src, dest, srcQty);
     }
 
-    function tradeWithHint(
+    function swap(
         IERC20 src,
         uint srcAmount,
         IERC20 dest,
         address payable destAddress,
-        uint maxDestAmount,
-        uint minConversionRate,
-        address walletId,
-        bytes memory hint
+        address ref
     )
         public
         payable
@@ -113,42 +99,24 @@ contract CompoundMultiKyber is BaseMultiKyber {
             IERC20 underlying = compoundUnderlyingAsset(src);
             uint256 underlyingAmount = balanceOf(underlying, address(this));
 
-            if (underlying != ETH) {
-                if (underlying.allowance(address(this), address(kyber)) == 0) {
-                    underlying.safeApprove(address(kyber), uint256(-1));
-                }
-            }
-
-            return this.tradeWithHint(
+            return this.swap(
                 underlying,
                 underlyingAmount,
                 dest,
                 destAddress,
-                maxDestAmount,
-                minConversionRate,
-                walletId,
-                hint
+                ref
             );
         }
 
         if (isCompoundToken(dest)) {
-            if (src != ETH) {
-                if (src.allowance(address(this), address(kyber)) == 0) {
-                    src.safeApprove(address(kyber), uint256(-1));
-                }
-            }
-
             IERC20 underlying = compoundUnderlyingAsset(dest);
 
-            uint256 returnAmount = this.tradeWithHint(
+            uint256 returnAmount = this.swap(
                 src,
                 srcAmount,
                 underlying,
                 address(this),
-                maxDestAmount,
-                minConversionRate,
-                walletId,
-                hint
+                ref
             );
 
             if (underlying == ETH) {
@@ -164,15 +132,12 @@ contract CompoundMultiKyber is BaseMultiKyber {
             return balance;
         }
 
-        return super.tradeWithHint(
+        return super.swap(
             src,
             srcAmount,
             dest,
             destAddress,
-            maxDestAmount,
-            minConversionRate,
-            walletId,
-            hint
+            ref
         );
     }
 

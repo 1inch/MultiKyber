@@ -6,20 +6,20 @@ import "@openzeppelin/contracts/token/ERC20/ERC20Detailed.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 
 import "./BaseMultiExchange.sol";
-import "./IKyber.sol";
+import "./IOasis.sol";
 
 
-contract BaseMultiKyber is BaseMultiExchange {
+contract BaseMultiOasis is BaseMultiExchange {
 
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    IERC20 public constant ETH = IERC20(0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE);
+    IERC20 public constant ETH = IERC20(0);
 
-    IKyber public kyber; // 0x818E6FECD516Ecc3849DAf6845e3EC868087B755
+    IOasis public oasis; // 0x39755357759cE0d7f32dC8dC45414CCa409AE24e
 
-    constructor(IKyber _kyber) public {
-        kyber = _kyber;
+    constructor(IOasis _oasis) public {
+        oasis = _oasis;
     }
 
     function getPrice(IERC20 src, IERC20 dest, uint srcQty)
@@ -31,7 +31,7 @@ contract BaseMultiKyber is BaseMultiExchange {
             return 1e18;
         }
 
-        (price,) = kyber.getExpectedRate(src, dest, srcQty);
+        return oasis.getBuyAmount(dest, src, srcQty).mul(1e18).div(srcQty);
     }
 
     function swap(
@@ -39,39 +39,37 @@ contract BaseMultiKyber is BaseMultiExchange {
         uint srcAmount,
         IERC20 dest,
         address payable destAddress,
-        address ref
+        address /*ref*/
     )
         public
         payable
         returns(uint256)
     {
         if (src == dest) {
-            uint256 balance;
-            if (dest == ETH) {
-                balance = address(this).balance;
-                destAddress.transfer(balance);
-            } else {
-                balance = src.balanceOf(address(this));
-                src.safeTransfer(destAddress, balance);
+            uint256 balance = src.balanceOf(address(this));
+            if (destAddress != address(this)) {
+                dest.safeTransfer(destAddress, balance);
             }
             return balance;
         }
 
         if (src != ETH) {
-            if (src.allowance(address(this), address(kyber)) == 0) {
-                src.safeApprove(address(kyber), uint256(-1));
+            if (src.allowance(address(this), address(oasis)) == 0) {
+                src.safeApprove(address(oasis), uint256(-1));
             }
         }
 
-        return kyber.tradeWithHint.value(address(this).balance)(
+        uint256 returnAmount = oasis.sellAllAmount(
             src,
             srcAmount,
             dest,
-            destAddress,
-            1 << 255,
-            0,
-            ref,
-            ""
+            0
         );
+
+        if (destAddress != address(this)) {
+            dest.safeTransfer(destAddress, returnAmount);
+        }
+
+        return returnAmount;
     }
 }
